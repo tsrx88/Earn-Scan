@@ -1,5 +1,4 @@
 import os
-import re
 import yfinance as yf
 from datetime import datetime
 from telegram import Update
@@ -9,12 +8,12 @@ from telegram.ext import (
 )
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-# === BOT TOKEN ===
+# === Bot Token ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN is missing. Check Railway Variables.")
 
-# === Winrate Emoji Logic ===
+# === Helper: Emoji based on winrate ===
 def get_winrate_emoji(winrate):
     if winrate > 50:
         return "🟢"
@@ -23,7 +22,7 @@ def get_winrate_emoji(winrate):
     else:
         return "🔴"
 
-# === Format Scan Results ===
+# === Format ticker results ===
 def format_list(results):
     return "\n".join([
         f"  *{r['ticker']}* {get_winrate_emoji(float(r['winrate'].replace('%','')))}:\n"
@@ -35,7 +34,7 @@ def format_list(results):
         for r in results
     ]) if results else "  None"
 
-# === Analyze a Ticker ===
+# === Analyze a single ticker ===
 def analyze_ticker(ticker):
     try:
         stock = yf.Ticker(ticker)
@@ -43,7 +42,7 @@ def analyze_ticker(ticker):
         price = info.get("currentPrice", 0)
         volume = info.get("volume", 0)
 
-        winrate = 0.5
+        winrate = 0.5  # Placeholder
         iv_rv_ratio = 1.43
         term_structure = -0.012
 
@@ -55,7 +54,7 @@ def analyze_ticker(ticker):
             tier = "NEAR MISS"
 
         return {
-            "ticker": ticker,
+            "ticker": ticker.upper(),
             "price": price,
             "volume": volume,
             "winrate": f"{winrate * 100:.1f}%",
@@ -67,7 +66,7 @@ def analyze_ticker(ticker):
     except Exception:
         return None
 
-# === Scan Handler (/scan or raw input) ===
+# === /scan and text handler ===
 async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.args:
         raw_tickers = context.args
@@ -99,11 +98,10 @@ async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(response, parse_mode="Markdown")
 
-# === Daily Auto Earnings Push ===
-async def scheduled_earnings_push(context: ContextTypes.DEFAULT_TYPE):
-    chat_id = "1274696171"  # Replace with your actual Telegram ID
+# === Daily auto alert ===
+async def scheduled_earnings_push(bot):
+    chat_id = 1274696171  # ← Replace this with YOUR Telegram chat ID
 
-    # Simulated earnings watchlist — replace this with real logic
     mock_earnings = [
         {"ticker": "TSLA", "winrate": 0.63},
         {"ticker": "AAPL", "winrate": 0.50},
@@ -118,19 +116,18 @@ async def scheduled_earnings_push(context: ContextTypes.DEFAULT_TYPE):
         emoji = get_winrate_emoji(stock["winrate"] * 100)
         message += f"{emoji} *{stock['ticker']}* — Est. {int(stock['winrate'] * 100)}% winrate\n"
 
-    await context.bot.send_message(chat_id=chat_id, text=message, parse_mode="Markdown")
+    await bot.send_message(chat_id=chat_id, text=message, parse_mode="Markdown")
 
-# === Setup App and Scheduler ===
-app = ApplicationBuilder().token(BOT_TOKEN).build()
+# === On startup hook (safe scheduler start) ===
+async def on_startup(app):
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(scheduled_earnings_push, "cron", hour=8, minute=0, args=[app.bot])   # Morning
+    scheduler.add_job(scheduled_earnings_push, "cron", hour=13, minute=0, args=[app.bot])  # Midday
+    scheduler.add_job(scheduled_earnings_push, "cron", hour=20, minute=0, args=[app.bot])  # Night
+    scheduler.start()
+
+# === Init app ===
+app = ApplicationBuilder().token(BOT_TOKEN).post_init(on_startup).build()
 app.add_handler(CommandHandler("scan", scan))
 app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), scan))
-
-# Scheduled 3x daily alerts
-scheduler = AsyncIOScheduler()
-scheduler.add_job(scheduled_earnings_push, "cron", hour=8, minute=0, args=[app.bot])   # Morning
-scheduler.add_job(scheduled_earnings_push, "cron", hour=13, minute=0, args=[app.bot])  # Midday
-scheduler.add_job(scheduled_earnings_push, "cron", hour=20, minute=0, args=[app.bot])  # Night
-scheduler.start()
-
-# === Start Bot ===
 app.run_polling()
