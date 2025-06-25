@@ -166,5 +166,8 @@ async def main():
     scheduler.start()
     await app.run_polling()
 
+# === Start everything ===
 if __name__ == "__main__":
-    asyncio.run(main())
+    scheduler.start()
+    app.run_polling()
+
