@@ -6,14 +6,14 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, Messa
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
 
-# === Static Environment Values ===
+# === Configuration ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = "1274696171"  # <-- Your chat ID set directly here
+CHAT_ID = "1274696171"  # Replace with your chat ID
 
 if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN is missing. Check Railway Variables.")
+    raise ValueError("BOT_TOKEN is missing. Set it in Railway Variables.")
 
-# === Calculate Winrate ===
+# === Real Winrate ===
 def calculate_real_winrate(ticker_symbol):
     try:
         ticker = yf.Ticker(ticker_symbol)
@@ -43,27 +43,23 @@ def calculate_real_winrate(ticker_symbol):
 
         if checked == 0:
             return 0.0
-
         return round((win_count / checked) * 100, 1)
     except:
         return 0.0
 
-# === Get Next Upcoming Earnings ===
+# === Next Earnings Date ===
 def get_next_earnings_date(ticker_symbol):
     try:
         earnings = yf.Ticker(ticker_symbol).earnings_dates
         if earnings is None or earnings.empty:
             return None
-
         now = datetime.now().date()
         upcoming = earnings[earnings.index.date >= now]
-        if not upcoming.empty:
-            return upcoming.index[0].date()
-        return None
+        return upcoming.index[0].date() if not upcoming.empty else None
     except:
         return None
 
-# === Analyze a Single Ticker ===
+# === Analyze Ticker ===
 def analyze_ticker(ticker):
     try:
         stock = yf.Ticker(ticker)
@@ -73,8 +69,8 @@ def analyze_ticker(ticker):
         winrate = calculate_real_winrate(ticker)
         earnings_date = get_next_earnings_date(ticker)
 
-        iv_rv_ratio = 1.43  # Placeholder
-        term_structure = -0.012  # Placeholder
+        iv_rv_ratio = 1.43  # Mock placeholder
+        term_structure = -0.012  # Mock placeholder
 
         if winrate >= 50 and iv_rv_ratio > 1.2:
             tier = "TIER 1"
@@ -97,7 +93,7 @@ def analyze_ticker(ticker):
     except:
         return None
 
-# === Format Scan Results ===
+# === Format Output ===
 def format_list(results):
     return "\n".join([
         f"<b>{r['ticker']}</b> {r['emoji']}\n"
@@ -109,18 +105,7 @@ def format_list(results):
         for r in results
     ]) if results else "  None"
 
-# === Command: /scan ===
-async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    tickers = [t.replace("$", "").upper() for t in context.args]
-    await send_scan(update.message.reply_text, tickers)
-
-# === Message: $TSLA or tsla ===
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip().replace("$", "").upper()
-    tickers = text.split()
-    await send_scan(update.message.reply_text, tickers)
-
-# === Core Scanner ===
+# === Send Scan Results ===
 async def send_scan(reply_func, tickers):
     tier1, tier2, near = [], [], []
 
@@ -144,29 +129,41 @@ async def send_scan(reply_func, tickers):
     )
     await reply_func(response, parse_mode="HTML")
 
-# === Scheduled Auto Scanner ===
+# === Handle /scan ===
+async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tickers = [t.replace("$", "").upper() for t in context.args]
+    await send_scan(update.message.reply_text, tickers)
+
+# === Handle Raw Text ===
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip().replace("$", "").upper()
+    tickers = text.split()
+    await send_scan(update.message.reply_text, tickers)
+
+# === Scheduled Auto Scan ===
 async def scheduled_scan():
     tickers = ["TSLA", "AAPL", "NVDA", "AMZN"]
     bot = Bot(BOT_TOKEN)
     await send_scan(lambda text, parse_mode: bot.send_message(chat_id=CHAT_ID, text=text, parse_mode=parse_mode), tickers)
 
-# === Initialize Bot ===
+# === Setup Bot ===
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("scan", scan))
 app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_text))
 
-# === Scheduler ===
+# === Schedule Times ===
 scheduler = AsyncIOScheduler()
 scheduler.add_job(scheduled_scan, "cron", hour=8)
 scheduler.add_job(scheduled_scan, "cron", hour=14)
 scheduler.add_job(scheduled_scan, "cron", hour=20)
 
-# === Start everything ===
+# === Main Runner ===
 async def main():
     scheduler.start()
-    await app.run_polling()
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    await app.updater.idle()
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.create_task(main())
-    loop.run_forever()
+    asyncio.run(main())
