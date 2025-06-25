@@ -183,8 +183,12 @@ async def main():
     scheduler.start()
     await app.initialize()
     await app.start()
-    await app.updater.start_polling()
-    await app.updater.idle()
+    await app.bot.set_my_commands([
+        ("scan", "Scan one or more tickers like /scan tsla aapl")
+    ])
+    print("Bot is running. Listening for messages...")
+    await app.run_polling()  # ✅ Replaces outdated .updater methods
+
 
 if __name__ == "__main__":
     asyncio.run(main())
