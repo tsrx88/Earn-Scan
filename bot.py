@@ -7,14 +7,12 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
 from telegram import Bot
 
-# === Environment Variables ===
+# === Static Environment Values ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
+CHAT_ID = "1274696171"  # <-- Your chat ID set directly here
 
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN is missing. Check Railway Variables.")
-if not CHAT_ID:
-    raise ValueError("CHAT_ID is missing. Check Railway Variables.")
 
 # === Calculate Winrate ===
 def calculate_real_winrate(ticker_symbol):
@@ -94,7 +92,7 @@ def analyze_ticker(ticker):
             "iv_rv_ratio": iv_rv_ratio,
             "term_structure": term_structure,
             "tier": tier,
-            "emoji": "🟩" if winrate > 50 else "🟨" if winrate == 50 else "🟥",
+            "emoji": "🟩" if winrate > 50 else "🟨" if winrate == 50 else "🔴",
             "earnings_date": earnings_date.strftime('%b %d') if earnings_date else "N/A"
         }
     except:
