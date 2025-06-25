@@ -162,12 +162,15 @@ scheduler.add_job(scheduled_scan, "cron", hour=8)
 scheduler.add_job(scheduled_scan, "cron", hour=14)
 scheduler.add_job(scheduled_scan, "cron", hour=20)
 
+
+# === Start everything ===
 async def main():
     scheduler.start()
     await app.run_polling()
 
-# === Start everything ===
 if __name__ == "__main__":
-    scheduler.start()
-    app.run_polling()
+    import asyncio
+    asyncio.run(main())
+
+
 
