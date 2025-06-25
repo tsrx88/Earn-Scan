@@ -4,7 +4,14 @@ from datetime import datetime, timedelta
 from telegram import Update, Bot
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+import logging
 import asyncio
+
+# === Logging ===
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 # === Static Environment Values ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -45,7 +52,8 @@ def calculate_real_winrate(ticker_symbol):
             return 0.0
 
         return round((win_count / checked) * 100, 1)
-    except:
+    except Exception as e:
+        logger.error(f"Error in winrate calc for {ticker_symbol}: {e}")
         return 0.0
 
 # === Get Next Upcoming Earnings ===
@@ -60,7 +68,8 @@ def get_next_earnings_date(ticker_symbol):
         if not upcoming.empty:
             return upcoming.index[0].date()
         return None
-    except:
+    except Exception as e:
+        logger.error(f"Error getting earnings for {ticker_symbol}: {e}")
         return None
 
 # === Analyze a Single Ticker ===
@@ -94,7 +103,8 @@ def analyze_ticker(ticker):
             "emoji": "🟩" if winrate > 50 else "🟨" if winrate == 50 else "🔴",
             "earnings_date": earnings_date.strftime('%b %d') if earnings_date else "N/A"
         }
-    except:
+    except Exception as e:
+        logger.error(f"Error analyzing {ticker}: {e}")
         return None
 
 # === Format Scan Results ===
@@ -111,14 +121,21 @@ def format_list(results):
 
 # === Command: /scan ===
 async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    tickers = [t.replace("$", "").upper() for t in context.args]
-    await send_scan(update.message.reply_text, tickers)
+    try:
+        tickers = [t.replace("$", "").upper() for t in context.args]
+        await send_scan(update.message.reply_text, tickers)
+    except Exception as e:
+        logger.error(f"/scan command failed: {e}")
 
 # === Message: $TSLA or tsla ===
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip().replace("$", "").upper()
-    tickers = text.split()
-    await send_scan(update.message.reply_text, tickers)
+    try:
+        text = update.message.text.strip().replace("$", "").upper()
+        tickers = text.split()
+        print(f"User sent: {text}")
+        await send_scan(update.message.reply_text, tickers)
+    except Exception as e:
+        logger.error(f"Text handler failed: {e}")
 
 # === Core Scanner ===
 async def send_scan(reply_func, tickers):
@@ -171,4 +188,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
