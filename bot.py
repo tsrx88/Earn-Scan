@@ -1,11 +1,10 @@
 import os
 import yfinance as yf
 from datetime import datetime, timedelta
-from telegram import Update
+from telegram import Update, Bot
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
-from telegram import Bot
 
 # === Static Environment Values ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -162,15 +161,12 @@ scheduler.add_job(scheduled_scan, "cron", hour=8)
 scheduler.add_job(scheduled_scan, "cron", hour=14)
 scheduler.add_job(scheduled_scan, "cron", hour=20)
 
-
 # === Start everything ===
 async def main():
     scheduler.start()
     await app.run_polling()
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
-
-
-
+    loop = asyncio.get_event_loop()
+    loop.create_task(main())
+    loop.run_forever()
