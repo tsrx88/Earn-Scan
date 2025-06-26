@@ -5,7 +5,19 @@ from telegram import Bot
 
 # === ENVIRONMENT VARIABLES ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID") or "1274696171"  # your default fallback
+
+# === AUTO-DETECT CHAT ID IF NOT PROVIDED ===
+CHAT_ID = os.getenv("CHAT_ID")
+if not CHAT_ID:
+    bot = Bot(BOT_TOKEN)
+    updates = bot.get_updates()
+    if updates:
+        CHAT_ID = updates[-1].message.chat.id
+        print(f"🆔 Auto-detected CHAT_ID: {CHAT_ID}")
+    else:
+        raise Exception("No messages found. Please message your bot first.")
+else:
+    print(f"📌 Using CHAT_ID from env: {CHAT_ID}")
 
 # === Send Notification Scan ===
 def calculate_real_winrate(ticker_symbol):
@@ -83,7 +95,7 @@ def format_list(results):
         f"  📈 Price: ${r['price']:.2f}\n"
         f"  📊 Volume: {r['volume']:,}\n"
         f"  🧠 Winrate: {r['winrate']} (last 12 earnings)\n"
-        f"  📅 Next Earnings: {r['earnings_date']}\n"
+        f"  🗕 Next Earnings: {r['earnings_date']}\n"
         f"  📉 IV/RV: {r['iv_rv_ratio']}  |  Term: {r['term_structure']}"
         for r in results
     ]) if results else "None"
@@ -103,7 +115,7 @@ def run_scan():
                 near.append(result)
 
     month = datetime.now().strftime("%B").upper()
-    emoji = "📅"
+    emoji = "🗕"
     message = (
         f"{emoji} <b>{month} SCAN RESULTS</b>\n\n"
         f"<u>TIER 1 RECOMMENDED TRADES:</u>\n{format_list(tier1)}\n\n"
@@ -114,6 +126,5 @@ def run_scan():
     bot = Bot(BOT_TOKEN)
     bot.send_message(chat_id=CHAT_ID, text=message, parse_mode="HTML")
 
-# === Entry Point ===
 if __name__ == "__main__":
     run_scan()
