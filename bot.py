@@ -143,28 +143,21 @@ async def main():
     
     # Set up scheduler with BackgroundScheduler
     scheduler = BackgroundScheduler()
-    scheduler.add_job(scheduled_scan, 'interval', hours=24, args=[app])  # Runs every 24 hours
+    scheduler.add_job(scheduled_scan, 'interval', minutes=5, args=[app])  # Test with 5 minutes
     scheduler.start()
 
-    # Run polling and handle shutdown gracefully
+    # Run polling and handle shutdown
     await app.initialize()
     try:
-        await app.run_polling(allowed_updates=Update.ALL_TYPES)  # Keep the bot running
+        await app.run_polling(allowed_updates=Update.ALL_TYPES)  # Let polling manage the loop
     except Exception as e:
         print(f"Polling error: {e}")
+        await app.shutdown()  # Ensure shutdown on error
     finally:
         await app.shutdown()
         scheduler.shutdown()
         print("🛑 Bot shutdown completed.")
 
 if __name__ == "__main__":
-    # Run the bot in a way that keeps the container alive
-    loop = asyncio.get_event_loop()
-    try:
-        loop.run_until_complete(main())
-    except KeyboardInterrupt:
-        print("Shutting down due to interrupt...")
-    finally:
-        loop.run_until_complete(asyncio.gather(*asyncio.all_tasks(loop)))
-        loop.close()
-        print("Event loop closed.")
+    # Use asyncio.run() to start the bot
+    asyncio.run(main())
