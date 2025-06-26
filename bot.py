@@ -135,12 +135,8 @@ async def main():
         await app.shutdown()    # Ensure proper cleanup
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
+    # Use asyncio.run() with proper loop handling for cloud environments
     try:
-        if loop.is_running():
-            print("Event loop is already running, scheduling task...")
-            loop.create_task(main())
-        else:
-            asyncio.run(main())
+        asyncio.run(main())
     except RuntimeError as e:
         print(f"Event loop error: {e}")
