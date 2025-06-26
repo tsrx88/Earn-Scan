@@ -1,3 +1,4 @@
+import asyncio
 import os
 import yfinance as yf
 from datetime import datetime, timedelta
@@ -5,19 +6,21 @@ from telegram import Bot
 
 # === ENVIRONMENT VARIABLES ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
 # === AUTO-DETECT CHAT ID IF NOT PROVIDED ===
-CHAT_ID = os.getenv("CHAT_ID")
-if not CHAT_ID:
-    bot = Bot(BOT_TOKEN)
-    updates = bot.get_updates()
-    if updates:
-        CHAT_ID = updates[-1].message.chat.id
-        print(f"🆔 Auto-detected CHAT_ID: {CHAT_ID}")
+async def get_chat_id():
+    global CHAT_ID
+    if not CHAT_ID:
+        bot = Bot(BOT_TOKEN)
+        updates = await bot.get_updates()
+        if updates:
+            CHAT_ID = updates[-1].message.chat.id
+            print(f"🆔 Auto-detected CHAT_ID: {CHAT_ID}")
+        else:
+            raise Exception("No messages found. Please message your bot first.")
     else:
-        raise Exception("No messages found. Please message your bot first.")
-else:
-    print(f"📌 Using CHAT_ID from env: {CHAT_ID}")
+        print(f"📌 Using CHAT_ID from env: {CHAT_ID}")
 
 # === Send Notification Scan ===
 def calculate_real_winrate(ticker_symbol):
@@ -127,4 +130,5 @@ def run_scan():
     bot.send_message(chat_id=CHAT_ID, text=message, parse_mode="HTML")
 
 if __name__ == "__main__":
+    asyncio.run(get_chat_id())
     run_scan()
