@@ -178,7 +178,8 @@ scheduler.add_job(scheduled_scan, "cron", hour=20)
 
 # === Async Main ===
 async def main():
-    scheduler.start()
+    if not scheduler.running:
+        scheduler.start()
     await app.initialize()
     await app.start()
     await app.bot.set_my_commands([
@@ -195,6 +196,4 @@ if __name__ == "__main__":
         else:
             loop.run_until_complete(main())
     except RuntimeError:
-        # For environments where no event loop exists
         asyncio.run(main())
-
