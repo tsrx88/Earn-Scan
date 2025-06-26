@@ -149,15 +149,20 @@ async def main():
     # Run polling and handle shutdown
     await app.initialize()
     try:
-        await app.run_polling(allowed_updates=Update.ALL_TYPES)  # Let polling manage the loop
+        await app.run_polling(allowed_updates=Update.ALL_TYPES)  # Native loop management
     except Exception as e:
         print(f"Polling error: {e}")
-        await app.shutdown()  # Ensure shutdown on error
+        await app.shutdown()  # Cleanup on error
     finally:
         await app.shutdown()
         scheduler.shutdown()
         print("🛑 Bot shutdown completed.")
 
 if __name__ == "__main__":
-    # Use asyncio.run() to start the bot
-    asyncio.run(main())
+    # Let asyncio.run() handle the event loop
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Shutting down due to interrupt...")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
