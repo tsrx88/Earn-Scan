@@ -1,7 +1,7 @@
 import os
 import time
 import threading
-from telegram import Update, Bot
+from telegram import Update, Bot, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import yfinance as yf
 from datetime import datetime, timedelta
@@ -126,13 +126,30 @@ async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     response = format_scan_results(tickers)
     await update.message.reply_text(response)
 
-# === Message handler for plain ticker input ===
+# === /trending command ===
+async def trending(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    top8 = ["TSLA", "AAPL", "NVDA", "AMD", "META", "AMZN", "MSFT", "NFLX"]
+    response = format_scan_results(top8)
+    await update.message.reply_text("🔥 <b>Trending Monthly 12Q Scan:</b>\n\n" + response, parse_mode="HTML")
+
+# === Menu /start command ===
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [["🔍 Scan", "🔥 Trending"]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    await update.message.reply_text("Welcome to 12Q. Choose an option:", reply_markup=reply_markup)
+
+# === Message handler for plain ticker input and button presses ===
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-    tickers = [word.replace("$", "").upper() for word in text.split() if word.isalpha() or word.startswith("$")]
-    if tickers:
-        response = format_scan_results(tickers)
-        await update.message.reply_text(response)
+    text = update.message.text.strip().lower()
+    if "trending" in text:
+        await trending(update, context)
+    elif "scan" in text:
+        await update.message.reply_text("Use /scan followed by ticker(s), like /scan tsla nvda")
+    else:
+        tickers = [word.replace("$", "").upper() for word in text.split() if word.isalpha() or word.startswith("$")]
+        if tickers:
+            response = format_scan_results(tickers)
+            await update.message.reply_text(response)
 
 # === Background thread for scheduled alerts ===
 def schedule_worker():
@@ -151,7 +168,9 @@ def schedule_worker():
 
 # === Initialize the bot ===
 app = ApplicationBuilder().token(BOT_TOKEN).build()
+app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("scan", scan))
+app.add_handler(CommandHandler("trending", trending))
 app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 
 # Start thread
