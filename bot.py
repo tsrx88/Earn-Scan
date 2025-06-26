@@ -55,7 +55,11 @@ def analyze_ticker(ticker):
         else:
             tier = "NEAR MISS"
 
-        if winrate > 0.5:
+        if winrate >= 0.90:
+            emoji = "🟢🟢🟢"
+        elif winrate >= 0.75:
+            emoji = "🟢🟢"
+        elif winrate > 0.5:
             emoji = "🟢"
         elif winrate == 0.5:
             emoji = "🟡"
@@ -94,12 +98,12 @@ def format_scan_results(ticker_list):
 
     def format_list(results):
         return "\n".join([
-            f"  {r['ticker']} {r['emoji']}:\n"
-            f"    Price: ${r['price']}\n"
-            f"    Volume: {r['volume']:,}\n"
-            f"    Winrate: {r['winrate']} over last 12 earnings\n"
-            f"    IV/RV Ratio: {r['iv_rv_ratio']}\n"
-            f"    Term Structure: {r['term_structure']}"
+            f"  {r['ticker']} {r['emoji']}\n"
+            f"    💰 Price: ${r['price']}\n"
+            f"    📊 Volume: {r['volume']:,}\n"
+            f"    🧠 Winrate: {r['winrate']} over last 12 earnings\n"
+            f"    📉 IV/RV Ratio: {r['iv_rv_ratio']}\n"
+            f"    ⏳ Term Structure: {r['term_structure']}"
             for r in results
         ]) if results else "  None"
 
