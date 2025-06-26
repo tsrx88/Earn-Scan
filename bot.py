@@ -15,12 +15,12 @@ logger = logging.getLogger(__name__)
 
 # === Static Environment Values ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = "1274696171"  # <-- Your chat ID set directly here
+CHAT_ID = "1274696171"  # Your Telegram user ID
 
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN is missing. Check Railway Variables.")
 
-# === Calculate Winrate ===
+# === Calculate Real Earnings Winrate ===
 def calculate_real_winrate(ticker_symbol):
     try:
         ticker = yf.Ticker(ticker_symbol)
@@ -56,7 +56,7 @@ def calculate_real_winrate(ticker_symbol):
         logger.error(f"Error in winrate calc for {ticker_symbol}: {e}")
         return 0.0
 
-# === Get Next Upcoming Earnings ===
+# === Get Next Earnings Date ===
 def get_next_earnings_date(ticker_symbol):
     try:
         earnings = yf.Ticker(ticker_symbol).earnings_dates
@@ -72,7 +72,7 @@ def get_next_earnings_date(ticker_symbol):
         logger.error(f"Error getting earnings for {ticker_symbol}: {e}")
         return None
 
-# === Analyze a Single Ticker ===
+# === Analyze One Ticker ===
 def analyze_ticker(ticker):
     try:
         stock = yf.Ticker(ticker)
@@ -107,7 +107,7 @@ def analyze_ticker(ticker):
         logger.error(f"Error analyzing {ticker}: {e}")
         return None
 
-# === Format Scan Results ===
+# === Format Results for Telegram ===
 def format_list(results):
     return "\n".join([
         f"<b>{r['ticker']}</b> {r['emoji']}\n"
@@ -119,7 +119,7 @@ def format_list(results):
         for r in results
     ]) if results else "  None"
 
-# === Command: /scan ===
+# === Scan Command ===
 async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         tickers = [t.replace("$", "").upper() for t in context.args]
@@ -127,17 +127,16 @@ async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"/scan command failed: {e}")
 
-# === Message: $TSLA or tsla ===
+# === Direct Text Handler (like tsla or $aapl) ===
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         text = update.message.text.strip().replace("$", "").upper()
         tickers = text.split()
-        print(f"User sent: {text}")
         await send_scan(update.message.reply_text, tickers)
     except Exception as e:
         logger.error(f"Text handler failed: {e}")
 
-# === Core Scanner ===
+# === Core Scanner Logic ===
 async def send_scan(reply_func, tickers):
     tier1, tier2, near = [], [], []
 
@@ -161,24 +160,23 @@ async def send_scan(reply_func, tickers):
     )
     await reply_func(response, parse_mode="HTML")
 
-# === Scheduled Auto Scanner ===
+# === Scheduled Notification ===
 async def scheduled_scan():
     tickers = ["TSLA", "AAPL", "NVDA", "AMZN"]
     bot = Bot(BOT_TOKEN)
     await send_scan(lambda text, parse_mode: bot.send_message(chat_id=CHAT_ID, text=text, parse_mode=parse_mode), tickers)
 
-# === Initialize Bot ===
+# === Setup Application ===
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("scan", scan))
 app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_text))
 
-# === Scheduler ===
 scheduler = AsyncIOScheduler()
 scheduler.add_job(scheduled_scan, "cron", hour=8)
 scheduler.add_job(scheduled_scan, "cron", hour=14)
 scheduler.add_job(scheduled_scan, "cron", hour=20)
 
-# === Start everything ===
+# === Async Main ===
 async def main():
     scheduler.start()
     await app.initialize()
@@ -190,11 +188,4 @@ async def main():
     await app.run_polling()
 
 if __name__ == "__main__":
-    try:
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(main())
-    except RuntimeError as e:
-        if "already running" in str(e):
-            print("Event loop already running. Skipping re-run.")
-        else:
-            raise
+    asyncio.run(main())
