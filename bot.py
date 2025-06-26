@@ -16,7 +16,7 @@ async def get_chat_id():
         updates = await bot.get_updates()
         if updates:
             CHAT_ID = updates[-1].message.chat.id
-            print(f"🆔 Auto-detected CHAT_ID: {CHAT_ID}")
+            print(f"🏥 Auto-detected CHAT_ID: {CHAT_ID}")
         else:
             raise Exception("No messages found. Please message your bot first.")
     else:
@@ -103,7 +103,7 @@ def format_list(results):
         for r in results
     ]) if results else "None"
 
-def run_scan():
+def build_scan_message():
     tickers = ["TSLA", "AAPL", "NVDA", "AMZN"]
     tier1, tier2, near = [], [], []
 
@@ -119,16 +119,18 @@ def run_scan():
 
     month = datetime.now().strftime("%B").upper()
     emoji = "🗕"
-    message = (
+    return (
         f"{emoji} <b>{month} SCAN RESULTS</b>\n\n"
         f"<u>TIER 1 RECOMMENDED TRADES:</u>\n{format_list(tier1)}\n\n"
         f"<u>TIER 2 WATCHLIST:</u>\n{format_list(tier2)}\n\n"
         f"<u>NEAR MISSES:</u>\n{format_list(near)}"
     )
 
+async def main():
+    await get_chat_id()
     bot = Bot(BOT_TOKEN)
-    bot.send_message(chat_id=CHAT_ID, text=message, parse_mode="HTML")
+    message = build_scan_message()
+    await bot.send_message(chat_id=CHAT_ID, text=message, parse_mode="HTML")
 
 if __name__ == "__main__":
-    asyncio.run(get_chat_id())
-    run_scan()
+    asyncio.run(main())
