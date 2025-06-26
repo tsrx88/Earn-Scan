@@ -1,6 +1,6 @@
 import os
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import yfinance as yf
 
 # === Load bot token from Railway Variables ===
@@ -42,14 +42,13 @@ def analyze_ticker(ticker):
     except Exception as e:
         return None
 
-# === /scan command ===
-async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    tickers = [t.upper() for t in context.args]
+# === Response formatter ===
+def format_scan_results(ticker_list):
     tier1 = []
     tier2 = []
     near_miss = []
 
-    for ticker in tickers:
+    for ticker in ticker_list:
         result = analyze_ticker(ticker)
         if result:
             if result["tier"] == "TIER 1":
@@ -77,9 +76,24 @@ async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "NEAR MISSES:\n" + format_list(near_miss)
     )
 
+    return response
+
+# === /scan command ===
+async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tickers = [t.upper() for t in context.args]
+    response = format_scan_results(tickers)
     await update.message.reply_text(response)
+
+# === Message handler for plain ticker input ===
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    tickers = [word.replace("$", "").upper() for word in text.split() if word.isalpha() or word.startswith("$")]
+    if tickers:
+        response = format_scan_results(tickers)
+        await update.message.reply_text(response)
 
 # === Initialize the bot ===
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("scan", scan))
+app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 app.run_polling()
