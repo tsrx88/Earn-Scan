@@ -4,7 +4,7 @@ import yfinance as yf
 from datetime import datetime, timedelta
 from telegram import Bot, Update
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes
-from apscheduler.schedulers.background import BackgroundScheduler  # Changed import
+from apscheduler.schedulers.background import BackgroundScheduler
 
 # === ENV VARIABLES ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -146,15 +146,25 @@ async def main():
     scheduler.add_job(scheduled_scan, 'interval', hours=24, args=[app])  # Runs every 24 hours
     scheduler.start()
 
+    # Run polling and handle shutdown gracefully
+    await app.initialize()
     try:
-        await app.initialize()
-        await app.run_polling()
+        await app.run_polling(allowed_updates=Update.ALL_TYPES)  # Keep the bot running
+    except Exception as e:
+        print(f"Polling error: {e}")
     finally:
         await app.shutdown()
         scheduler.shutdown()
+        print("🛑 Bot shutdown completed.")
 
 if __name__ == "__main__":
+    # Run the bot in a way that keeps the container alive
+    loop = asyncio.get_event_loop()
     try:
-        asyncio.run(main())
-    except RuntimeError as e:
-        print(f"Event loop error: {e}")
+        loop.run_until_complete(main())
+    except KeyboardInterrupt:
+        print("Shutting down due to interrupt...")
+    finally:
+        loop.run_until_complete(asyncio.gather(*asyncio.all_tasks(loop)))
+        loop.close()
+        print("Event loop closed.")
