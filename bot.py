@@ -128,7 +128,19 @@ async def main():
     app.add_handler(CommandHandler("scan", scan_command))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), text_handler))
     print("✅ Bot is live and listening...")
-    await app.run_polling()
+    try:
+        await app.initialize()  # Explicitly initialize the application
+        await app.run_polling() # Run the bot with polling
+    finally:
+        await app.shutdown()    # Ensure proper cleanup
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    try:
+        if loop.is_running():
+            print("Event loop is already running, scheduling task...")
+            loop.create_task(main())
+        else:
+            asyncio.run(main())
+    except RuntimeError as e:
+        print(f"Event loop error: {e}")
