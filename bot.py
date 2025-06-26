@@ -2,13 +2,14 @@ import asyncio
 import os
 import yfinance as yf
 from datetime import datetime, timedelta
-from telegram import Bot
+from telegram import Bot, Update
+from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes
 
-# === ENVIRONMENT VARIABLES ===
+# === ENV VARIABLES ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-# === AUTO-DETECT CHAT ID IF NOT PROVIDED ===
+# === Auto-Detect Chat ID if not provided ===
 async def get_chat_id():
     global CHAT_ID
     if not CHAT_ID:
@@ -16,13 +17,13 @@ async def get_chat_id():
         updates = await bot.get_updates()
         if updates:
             CHAT_ID = updates[-1].message.chat.id
-            print(f"🏥 Auto-detected CHAT_ID: {CHAT_ID}")
+            print(f"🆔 Auto-detected CHAT_ID: {CHAT_ID}")
         else:
             raise Exception("No messages found. Please message your bot first.")
     else:
         print(f"📌 Using CHAT_ID from env: {CHAT_ID}")
 
-# === Send Notification Scan ===
+# === Analysis Functions ===
 def calculate_real_winrate(ticker_symbol):
     try:
         ticker = yf.Ticker(ticker_symbol)
@@ -81,7 +82,7 @@ def analyze_ticker(ticker):
         tier = "NEAR MISS"
 
     return {
-        "ticker": ticker,
+        "ticker": ticker.upper(),
         "price": price,
         "volume": volume,
         "winrate": f"{winrate:.1f}%",
@@ -92,45 +93,42 @@ def analyze_ticker(ticker):
         "earnings_date": earnings_date.strftime('%b %d') if earnings_date else "N/A"
     }
 
-def format_list(results):
-    return "\n".join([
+def format_result(r):
+    return (
         f"<b>{r['ticker']}</b> {r['emoji']}\n"
         f"  📈 Price: ${r['price']:.2f}\n"
         f"  📊 Volume: {r['volume']:,}\n"
         f"  🧠 Winrate: {r['winrate']} (last 12 earnings)\n"
         f"  ⏱️ Next Earnings: {r['earnings_date']}\n"
         f"  📉 IV/RV: {r['iv_rv_ratio']}  |  Term: {r['term_structure']}"
-        for r in results
-    ]) if results else "None"
-
-def build_scan_message():
-    tickers = ["TSLA", "AAPL", "NVDA", "AMZN"]
-    tier1, tier2, near = [], [], []
-
-    for ticker in tickers:
-        result = analyze_ticker(ticker)
-        if result:
-            if result["tier"] == "TIER 1":
-                tier1.append(result)
-            elif result["tier"] == "TIER 2":
-                tier2.append(result)
-            else:
-                near.append(result)
-
-    month = datetime.now().strftime("%B").upper()
-    emoji = "🗓️"
-    return (
-        f"{emoji} <b>{month} SCAN RESULTS</b>\n\n"
-        f"<u>TIER 1 RECOMMENDED TRADES:</u>\n{format_list(tier1)}\n\n"
-        f"<u>TIER 2 WATCHLIST:</u>\n{format_list(tier2)}\n\n"
-        f"<u>NEAR MISSES:</u>\n{format_list(near)}"
     )
 
+# === Command Handler ===
+async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tickers = context.args
+    if not tickers:
+        await update.message.reply_text("Usage: /scan TSLA AAPL")
+        return
+    results = [analyze_ticker(t.strip('$')) for t in tickers]
+    message = "\n\n".join([format_result(r) for r in results])
+    await update.message.reply_text(message, parse_mode="HTML")
+
+# === Free-form Text Handler ===
+async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip().upper().replace("$", "")
+    if len(text) <= 5 and text.isalnum():
+        result = analyze_ticker(text)
+        message = format_result(result)
+        await update.message.reply_text(message, parse_mode="HTML")
+
+# === Main Setup ===
 async def main():
     await get_chat_id()
-    bot = Bot(BOT_TOKEN)
-    message = build_scan_message()
-    await bot.send_message(chat_id=CHAT_ID, text=message, parse_mode="HTML")
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("scan", scan_command))
+    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), text_handler))
+    print("✅ Bot is live and listening...")
+    await app.run_polling()
 
 if __name__ == "__main__":
     asyncio.run(main())
