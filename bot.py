@@ -187,8 +187,14 @@ async def main():
         ("scan", "Scan one or more tickers like /scan tsla aapl")
     ])
     print("Bot is running. Listening for messages...")
-    await app.run_polling()  # ✅ Replaces outdated .updater methods
-
+    await app.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(main())
+    except RuntimeError as e:
+        if "already running" in str(e):
+            print("Event loop already running. Skipping re-run.")
+        else:
+            raise
