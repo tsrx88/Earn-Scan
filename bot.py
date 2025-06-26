@@ -2,19 +2,19 @@ import asyncio
 import os
 import yfinance as yf
 from datetime import datetime, timedelta
-from telegram import Bot, Update
-from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes
-from apscheduler.schedulers.async_ import AsyncScheduler
+from telegram import Update, Bot
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+import nest_asyncio
 
-# === ENV VARIABLES ===
+nest_asyncio.apply()
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-# === Auto-Detect Chat ID if not provided ===
-async def get_chat_id():
+# === Auto-detect CHAT_ID ===
+async def get_chat_id(bot):
     global CHAT_ID
     if not CHAT_ID:
-        bot = Bot(BOT_TOKEN)
         updates = await bot.get_updates()
         if updates:
             CHAT_ID = updates[-1].message.chat.id
@@ -24,7 +24,7 @@ async def get_chat_id():
     else:
         print(f"📌 Using CHAT_ID from env: {CHAT_ID}")
 
-# === Analysis Functions ===
+# === Core scan logic ===
 def calculate_real_winrate(ticker_symbol):
     try:
         ticker = yf.Ticker(ticker_symbol)
@@ -33,38 +33,30 @@ def calculate_real_winrate(ticker_symbol):
             return 0.0
 
         win_count, checked = 0, 0
-
         for index, row in earnings.head(12).iterrows():
             earnings_date = row.name.date()
             history = ticker.history(start=earnings_date - timedelta(days=3), end=earnings_date + timedelta(days=3))
-
             if len(history) < 3:
                 continue
-
             before = history[history.index.date < earnings_date]
             after = history[history.index.date > earnings_date]
-
             if not before.empty and not after.empty:
                 before_close = before.iloc[-1]['Close']
                 after_close = after.iloc[0]['Close']
                 if after_close > before_close:
                     win_count += 1
                 checked += 1
-
         return round((win_count / checked) * 100, 1) if checked else 0.0
-    except Exception as e:
-        print(f"Error calculating winrate for {ticker_symbol}: {e}")
+    except:
         return 0.0
 
 def get_next_earnings_date(ticker_symbol):
     try:
-        ticker = yf.Ticker(ticker_symbol)
-        earnings = ticker.earnings_dates
+        earnings = yf.Ticker(ticker_symbol).earnings_dates
         now = datetime.now().date()
         upcoming = earnings[earnings.index.date >= now]
         return upcoming.index[0].date() if not upcoming.empty else None
-    except Exception as e:
-        print(f"Error getting next earnings date for {ticker_symbol}: {e}")
+    except:
         return None
 
 def analyze_ticker(ticker):
@@ -75,8 +67,8 @@ def analyze_ticker(ticker):
     winrate = calculate_real_winrate(ticker)
     earnings_date = get_next_earnings_date(ticker)
 
-    iv_rv_ratio = 1.43  # placeholder
-    term_structure = -0.012  # placeholder
+    iv_rv_ratio = 1.43
+    term_structure = -0.012
 
     if winrate >= 50 and iv_rv_ratio > 1.2:
         tier = "TIER 1"
@@ -90,71 +82,66 @@ def analyze_ticker(ticker):
         "price": price,
         "volume": volume,
         "winrate": f"{winrate:.1f}%",
-        "next_earnings": earnings_date.strftime('%b %d') if earnings_date else "N/A",
         "iv_rv_ratio": iv_rv_ratio,
         "term_structure": term_structure,
         "tier": tier,
-        "emoji": "🟢" if winrate > 50 else "🟡" if winrate == 50 else "🔴"
+        "emoji": "🟢" if winrate > 50 else "🟡" if winrate == 50 else "🔴",
+        "earnings_date": earnings_date.strftime('%b %d') if earnings_date else "N/A"
     }
 
-def format_result(r):
-    return (
+def format_list(results):
+    return "\n".join([
         f"<b>{r['ticker']}</b> {r['emoji']}\n"
         f"  📈 Price: ${r['price']:.2f}\n"
         f"  📊 Volume: {r['volume']:,}\n"
         f"  🧠 Winrate: {r['winrate']} (last 12 earnings)\n"
-        f"  ⏱️ Next Earnings: {r['next_earnings']}\n"
+        f"  ⏱️ Next Earnings: {r['earnings_date']}\n"
         f"  📉 IV/RV: {r['iv_rv_ratio']}  |  Term: {r['term_structure']}"
+        for r in results
+    ]) if results else "None"
+
+def build_scan_message(tickers):
+    tier1, tier2, near = [], [], []
+    for ticker in tickers:
+        result = analyze_ticker(ticker)
+        if result:
+            if result["tier"] == "TIER 1":
+                tier1.append(result)
+            elif result["tier"] == "TIER 2":
+                tier2.append(result)
+            else:
+                near.append(result)
+
+    month = datetime.now().strftime("%B").upper()
+    emoji = "🗓️"
+    return (
+        f"{emoji} <b>{month} SCAN RESULTS</b>\n\n"
+        f"<u>TIER 1 RECOMMENDED TRADES:</u>\n{format_list(tier1)}\n\n"
+        f"<u>TIER 2 WATCHLIST:</u>\n{format_list(tier2)}\n\n"
+        f"<u>NEAR MISSES:</u>\n{format_list(near)}"
     )
 
-# === Scheduled Task ===
-async def scheduled_scan(app):
-    tickers = ["TSLA", "AAPL"]  # Customize these tickers
-    results = [analyze_ticker(t) for t in tickers]
-    message = "\n\n".join([format_result(r) for r in results])
-    await app.bot.send_message(chat_id=CHAT_ID, text=message, parse_mode="HTML")
-    print(f"📅 Scheduled scan completed at {datetime.now()}")
-
 # === Command Handler ===
-async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    tickers = context.args
-    if not tickers:
-        await update.message.reply_text("Usage: /scan TSLA AAPL")
-        return
-    results = [analyze_ticker(t.strip('$')) for t in tickers]
-    message = "\n\n".join([format_result(r) for r in results])
+async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tickers = context.args or ["TSLA", "AAPL", "NVDA", "AMZN"]
+    tickers = [t.replace("$", "").upper() for t in tickers]
+    message = build_scan_message(tickers)
     await update.message.reply_text(message, parse_mode="HTML")
 
-# === Free-form Text Handler ===
-async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip().upper().replace("$", "")
-    if len(text) <= 5 and text.isalnum():
-        result = analyze_ticker(text)
-        message = format_result(result)
-        await update.message.reply_text(message, parse_mode="HTML")
-
-# === Main Setup ===
+# === Setup and run ===
 async def main():
-    await get_chat_id()
+    bot = Bot(BOT_TOKEN)
+    await get_chat_id(bot)
     app = ApplicationBuilder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("scan", scan_command))
-    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), text_handler))
-    print("✅ Bot is live and listening...")
-    
-    # Set up scheduler
-    scheduler = AsyncScheduler()
-    scheduler.add_job(scheduled_scan, 'interval', hours=24, args=[app])  # Runs every 24 hours
-    scheduler.start()
+    app.add_handler(CommandHandler("scan", scan))
 
-    try:
-        await app.initialize()
-        await app.run_polling()
-    finally:
-        await app.shutdown()
-        scheduler.shutdown()
+    await app.bot.set_my_commands([
+        ("scan", "Scan one or more tickers like /scan tsla aapl")
+    ])
+    print("✅ Bot is live and listening...")
+    await app.initialize()
+    await app.start()
+    await app.run_polling()
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except RuntimeError as e:
-        print(f"Event loop error: {e}")
+    asyncio.run(main())
