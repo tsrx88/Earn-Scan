@@ -88,7 +88,7 @@ def analyze_ticker(ticker):
         "iv_rv_ratio": iv_rv_ratio,
         "term_structure": term_structure,
         "tier": tier,
-        "emoji": "🟩" if winrate > 50 else "🟨" if winrate == 50 else "🔴",
+        "emoji": "🟢" if winrate > 50 else "🟡" if winrate == 50 else "🔴",
         "earnings_date": earnings_date.strftime('%b %d') if earnings_date else "N/A"
     }
 
@@ -98,7 +98,7 @@ def format_list(results):
         f"  📈 Price: ${r['price']:.2f}\n"
         f"  📊 Volume: {r['volume']:,}\n"
         f"  🧠 Winrate: {r['winrate']} (last 12 earnings)\n"
-        f"  🗕 Next Earnings: {r['earnings_date']}\n"
+        f"  ⏱️ Next Earnings: {r['earnings_date']}\n"
         f"  📉 IV/RV: {r['iv_rv_ratio']}  |  Term: {r['term_structure']}"
         for r in results
     ]) if results else "None"
@@ -118,7 +118,7 @@ def build_scan_message():
                 near.append(result)
 
     month = datetime.now().strftime("%B").upper()
-    emoji = "🗕"
+    emoji = "🗓️"
     return (
         f"{emoji} <b>{month} SCAN RESULTS</b>\n\n"
         f"<u>TIER 1 RECOMMENDED TRADES:</u>\n{format_list(tier1)}\n\n"
