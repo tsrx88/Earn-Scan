@@ -2,12 +2,39 @@ import os
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import yfinance as yf
+from datetime import datetime, timedelta
 
 # === Load bot token from Railway Variables ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN is missing. Check Railway Variables.")
+
+# === Real winrate calculation ===
+def calculate_real_winrate(ticker_symbol):
+    try:
+        ticker = yf.Ticker(ticker_symbol)
+        earnings = ticker.earnings_dates
+        if earnings is None or earnings.empty:
+            return 0.0
+
+        win_count, checked = 0, 0
+        for index, row in earnings.head(12).iterrows():
+            earnings_date = row.name.date()
+            history = ticker.history(start=earnings_date - timedelta(days=3), end=earnings_date + timedelta(days=3))
+            if len(history) < 3:
+                continue
+            before = history[history.index.date < earnings_date]
+            after = history[history.index.date > earnings_date]
+            if not before.empty and not after.empty:
+                before_close = before.iloc[-1]['Close']
+                after_close = after.iloc[0]['Close']
+                if after_close > before_close:
+                    win_count += 1
+                checked += 1
+        return round((win_count / checked), 2) if checked else 0.0
+    except:
+        return 0.0
 
 # === Example formula logic ===
 def analyze_ticker(ticker):
@@ -17,8 +44,7 @@ def analyze_ticker(ticker):
         price = info.get("currentPrice", 0)
         volume = info.get("volume", 0)
 
-        # Your logic (placeholder values):
-        winrate = 0.5
+        winrate = calculate_real_winrate(ticker)
         iv_rv_ratio = 1.43
         term_structure = -0.012
 
