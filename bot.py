@@ -4,6 +4,7 @@ import yfinance as yf
 from datetime import datetime, timedelta
 from telegram import Bot, Update
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes
+from apscheduler.schedulers.async_ import AsyncScheduler
 
 # === ENV VARIABLES ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -51,16 +52,19 @@ def calculate_real_winrate(ticker_symbol):
                 checked += 1
 
         return round((win_count / checked) * 100, 1) if checked else 0.0
-    except:
+    except Exception as e:
+        print(f"Error calculating winrate for {ticker_symbol}: {e}")
         return 0.0
 
 def get_next_earnings_date(ticker_symbol):
     try:
-        earnings = yf.Ticker(ticker_symbol).earnings_dates
+        ticker = yf.Ticker(ticker_symbol)
+        earnings = ticker.earnings_dates
         now = datetime.now().date()
         upcoming = earnings[earnings.index.date >= now]
         return upcoming.index[0].date() if not upcoming.empty else None
-    except:
+    except Exception as e:
+        print(f"Error getting next earnings date for {ticker_symbol}: {e}")
         return None
 
 def analyze_ticker(ticker):
@@ -86,11 +90,11 @@ def analyze_ticker(ticker):
         "price": price,
         "volume": volume,
         "winrate": f"{winrate:.1f}%",
+        "next_earnings": earnings_date.strftime('%b %d') if earnings_date else "N/A",
         "iv_rv_ratio": iv_rv_ratio,
         "term_structure": term_structure,
         "tier": tier,
-        "emoji": "🟢" if winrate > 50 else "🟡" if winrate == 50 else "🔴",
-        "earnings_date": earnings_date.strftime('%b %d') if earnings_date else "N/A"
+        "emoji": "🟢" if winrate > 50 else "🟡" if winrate == 50 else "🔴"
     }
 
 def format_result(r):
@@ -99,9 +103,17 @@ def format_result(r):
         f"  📈 Price: ${r['price']:.2f}\n"
         f"  📊 Volume: {r['volume']:,}\n"
         f"  🧠 Winrate: {r['winrate']} (last 12 earnings)\n"
-        f"  ⏱️ Next Earnings: {r['earnings_date']}\n"
+        f"  ⏱️ Next Earnings: {r['next_earnings']}\n"
         f"  📉 IV/RV: {r['iv_rv_ratio']}  |  Term: {r['term_structure']}"
     )
+
+# === Scheduled Task ===
+async def scheduled_scan(app):
+    tickers = ["TSLA", "AAPL"]  # Customize these tickers
+    results = [analyze_ticker(t) for t in tickers]
+    message = "\n\n".join([format_result(r) for r in results])
+    await app.bot.send_message(chat_id=CHAT_ID, text=message, parse_mode="HTML")
+    print(f"📅 Scheduled scan completed at {datetime.now()}")
 
 # === Command Handler ===
 async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -128,14 +140,20 @@ async def main():
     app.add_handler(CommandHandler("scan", scan_command))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), text_handler))
     print("✅ Bot is live and listening...")
+    
+    # Set up scheduler
+    scheduler = AsyncScheduler()
+    scheduler.add_job(scheduled_scan, 'interval', hours=24, args=[app])  # Runs every 24 hours
+    scheduler.start()
+
     try:
-        await app.initialize()  # Explicitly initialize the application
-        await app.run_polling() # Run the bot with polling
+        await app.initialize()
+        await app.run_polling()
     finally:
-        await app.shutdown()    # Ensure proper cleanup
+        await app.shutdown()
+        scheduler.shutdown()
 
 if __name__ == "__main__":
-    # Use asyncio.run() with proper loop handling for cloud environments
     try:
         asyncio.run(main())
     except RuntimeError as e:
