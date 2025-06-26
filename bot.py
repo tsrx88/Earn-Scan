@@ -1,26 +1,13 @@
 import os
 import yfinance as yf
 from datetime import datetime, timedelta
-from telegram import Update, Bot
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-import logging
-import asyncio
+from telegram import Bot
 
-# === Logging ===
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
-# === Static Environment Values ===
+# === ENVIRONMENT VARIABLES ===
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = "1274696171"  # Your Telegram user ID
+CHAT_ID = os.getenv("CHAT_ID") or "1274696171"  # your default fallback
 
-if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN is missing. Check Railway Variables.")
-
-# === Calculate Real Earnings Winrate ===
+# === Send Notification Scan ===
 def calculate_real_winrate(ticker_symbol):
     try:
         ticker = yf.Ticker(ticker_symbol)
@@ -28,8 +15,7 @@ def calculate_real_winrate(ticker_symbol):
         if earnings is None or earnings.empty:
             return 0.0
 
-        win_count = 0
-        checked = 0
+        win_count, checked = 0, 0
 
         for index, row in earnings.head(12).iterrows():
             earnings_date = row.name.date()
@@ -48,66 +34,49 @@ def calculate_real_winrate(ticker_symbol):
                     win_count += 1
                 checked += 1
 
-        if checked == 0:
-            return 0.0
-
-        return round((win_count / checked) * 100, 1)
-    except Exception as e:
-        logger.error(f"Error in winrate calc for {ticker_symbol}: {e}")
+        return round((win_count / checked) * 100, 1) if checked else 0.0
+    except:
         return 0.0
 
-# === Get Next Earnings Date ===
 def get_next_earnings_date(ticker_symbol):
     try:
         earnings = yf.Ticker(ticker_symbol).earnings_dates
-        if earnings is None or earnings.empty:
-            return None
-
         now = datetime.now().date()
         upcoming = earnings[earnings.index.date >= now]
-        if not upcoming.empty:
-            return upcoming.index[0].date()
-        return None
-    except Exception as e:
-        logger.error(f"Error getting earnings for {ticker_symbol}: {e}")
+        return upcoming.index[0].date() if not upcoming.empty else None
+    except:
         return None
 
-# === Analyze One Ticker ===
 def analyze_ticker(ticker):
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        price = info.get("currentPrice", 0)
-        volume = info.get("volume", 0)
-        winrate = calculate_real_winrate(ticker)
-        earnings_date = get_next_earnings_date(ticker)
+    stock = yf.Ticker(ticker)
+    info = stock.info
+    price = info.get("currentPrice", 0)
+    volume = info.get("volume", 0)
+    winrate = calculate_real_winrate(ticker)
+    earnings_date = get_next_earnings_date(ticker)
 
-        iv_rv_ratio = 1.43  # Placeholder
-        term_structure = -0.012  # Placeholder
+    iv_rv_ratio = 1.43  # placeholder
+    term_structure = -0.012  # placeholder
 
-        if winrate >= 50 and iv_rv_ratio > 1.2:
-            tier = "TIER 1"
-        elif winrate >= 40:
-            tier = "TIER 2"
-        else:
-            tier = "NEAR MISS"
+    if winrate >= 50 and iv_rv_ratio > 1.2:
+        tier = "TIER 1"
+    elif winrate >= 40:
+        tier = "TIER 2"
+    else:
+        tier = "NEAR MISS"
 
-        return {
-            "ticker": ticker,
-            "price": price,
-            "volume": volume,
-            "winrate": f"{winrate:.1f}%",
-            "iv_rv_ratio": iv_rv_ratio,
-            "term_structure": term_structure,
-            "tier": tier,
-            "emoji": "🟩" if winrate > 50 else "🟨" if winrate == 50 else "🔴",
-            "earnings_date": earnings_date.strftime('%b %d') if earnings_date else "N/A"
-        }
-    except Exception as e:
-        logger.error(f"Error analyzing {ticker}: {e}")
-        return None
+    return {
+        "ticker": ticker,
+        "price": price,
+        "volume": volume,
+        "winrate": f"{winrate:.1f}%",
+        "iv_rv_ratio": iv_rv_ratio,
+        "term_structure": term_structure,
+        "tier": tier,
+        "emoji": "🟩" if winrate > 50 else "🟨" if winrate == 50 else "🔴",
+        "earnings_date": earnings_date.strftime('%b %d') if earnings_date else "N/A"
+    }
 
-# === Format Results for Telegram ===
 def format_list(results):
     return "\n".join([
         f"<b>{r['ticker']}</b> {r['emoji']}\n"
@@ -117,27 +86,10 @@ def format_list(results):
         f"  📅 Next Earnings: {r['earnings_date']}\n"
         f"  📉 IV/RV: {r['iv_rv_ratio']}  |  Term: {r['term_structure']}"
         for r in results
-    ]) if results else "  None"
+    ]) if results else "None"
 
-# === Scan Command ===
-async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        tickers = [t.replace("$", "").upper() for t in context.args]
-        await send_scan(update.message.reply_text, tickers)
-    except Exception as e:
-        logger.error(f"/scan command failed: {e}")
-
-# === Direct Text Handler (like tsla or $aapl) ===
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        text = update.message.text.strip().replace("$", "").upper()
-        tickers = text.split()
-        await send_scan(update.message.reply_text, tickers)
-    except Exception as e:
-        logger.error(f"Text handler failed: {e}")
-
-# === Core Scanner Logic ===
-async def send_scan(reply_func, tickers):
+def run_scan():
+    tickers = ["TSLA", "AAPL", "NVDA", "AMZN"]
     tier1, tier2, near = [], [], []
 
     for ticker in tickers:
@@ -152,48 +104,16 @@ async def send_scan(reply_func, tickers):
 
     month = datetime.now().strftime("%B").upper()
     emoji = "📅"
-    response = (
+    message = (
         f"{emoji} <b>{month} SCAN RESULTS</b>\n\n"
         f"<u>TIER 1 RECOMMENDED TRADES:</u>\n{format_list(tier1)}\n\n"
         f"<u>TIER 2 WATCHLIST:</u>\n{format_list(tier2)}\n\n"
         f"<u>NEAR MISSES:</u>\n{format_list(near)}"
     )
-    await reply_func(response, parse_mode="HTML")
 
-# === Scheduled Notification ===
-async def scheduled_scan():
-    tickers = ["TSLA", "AAPL", "NVDA", "AMZN"]
     bot = Bot(BOT_TOKEN)
-    await send_scan(lambda text, parse_mode: bot.send_message(chat_id=CHAT_ID, text=text, parse_mode=parse_mode), tickers)
+    bot.send_message(chat_id=CHAT_ID, text=message, parse_mode="HTML")
 
-# === Setup Application ===
-app = ApplicationBuilder().token(BOT_TOKEN).build()
-app.add_handler(CommandHandler("scan", scan))
-app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_text))
-
-scheduler = AsyncIOScheduler()
-scheduler.add_job(scheduled_scan, "cron", hour=8)
-scheduler.add_job(scheduled_scan, "cron", hour=14)
-scheduler.add_job(scheduled_scan, "cron", hour=20)
-
-# === Async Main ===
-async def main():
-    if not scheduler.running:
-        scheduler.start()
-    await app.initialize()
-    await app.start()
-    await app.bot.set_my_commands([
-        ("scan", "Scan one or more tickers like /scan tsla aapl")
-    ])
-    print("Bot is running. Listening for messages...")
-    await app.run_polling()
-
+# === Entry Point ===
 if __name__ == "__main__":
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(main())
-        else:
-            loop.run_until_complete(main())
-    except RuntimeError:
-        asyncio.run(main())
+    run_scan()
