@@ -1,5 +1,7 @@
 import os
-from telegram import Update
+import time
+import threading
+from telegram import Update, Bot
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import yfinance as yf
 from datetime import datetime, timedelta
@@ -9,6 +11,8 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN is missing. Check Railway Variables.")
+
+bot = Bot(BOT_TOKEN)
 
 # === Real winrate calculation ===
 def calculate_real_winrate(ticker_symbol):
@@ -55,7 +59,7 @@ def analyze_ticker(ticker):
         else:
             tier = "NEAR MISS"
 
-        if winrate >= 0.90:
+        if winrate >= 0.9:
             emoji = "🟢🟢🟢"
         elif winrate >= 0.75:
             emoji = "🟢🟢"
@@ -101,7 +105,7 @@ def format_scan_results(ticker_list):
             f"  {r['ticker']} {r['emoji']}\n"
             f"    💰 Price: ${r['price']}\n"
             f"    📊 Volume: {r['volume']:,}\n"
-            f"    🧠 Winrate: {r['winrate']} over last 12 earnings\n"
+            f"    🧠 Winrate: {r['winrate']}  (12Q) \n"
             f"    📉 IV/RV Ratio: {r['iv_rv_ratio']}\n"
             f"    ⏳ Term Structure: {r['term_structure']}"
             for r in results
@@ -130,8 +134,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         response = format_scan_results(tickers)
         await update.message.reply_text(response)
 
+# === Background thread for scheduled alerts ===
+def schedule_worker():
+    tickers = ["TSLA", "AAPL", "NVDA"]  # ← You can customize
+    while True:
+        now = datetime.now()
+        target_times = [(8, 0), (13, 0), (20, 0)]  # 8AM, 1PM, 8PM
+        if (now.hour, now.minute) in target_times:
+            message = format_scan_results(tickers)
+            try:
+                bot.send_message(chat_id=os.getenv("CHAT_ID"), text=message)
+            except Exception as e:
+                print(f"Failed to send scheduled message: {e}")
+            time.sleep(60)  # prevent double-send within the same minute
+        time.sleep(30)
+
 # === Initialize the bot ===
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("scan", scan))
 app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
+
+# Start thread
+threading.Thread(target=schedule_worker, daemon=True).start()
+
+# Start bot
 app.run_polling()
