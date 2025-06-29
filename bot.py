@@ -112,10 +112,10 @@ def format_scan_results(ticker_list):
         ]) if results else "  None"
 
     response = (
-        "=== SCAN RESULTS ===\n\n"
-        "TIER 1 RECOMMENDED TRADES:\n" + format_list(tier1) + "\n\n"
-        "TIER 2 RECOMMENDED TRADES:\n" + format_list(tier2) + "\n\n"
-        "NEAR MISSES:\n" + format_list(near_miss)
+        "  🛰️ SCAN RESULTS 🛰️ \n\n"
+        "TIER 1 🥇RECOMMENDED TRADES:\n" + format_list(tier1) + "\n\n"
+        "TIER 2 🥈RECOMMENDED TRADES:\n" + format_list(tier2) + "\n\n"
+        "NEAR MISSES 🥉:\n" + format_list(near_miss)
     )
 
     return response
